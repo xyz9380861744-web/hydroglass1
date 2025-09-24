@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HydroGlass - Water Tracker</title>
@@ -13,10 +12,6 @@
     <meta name="apple-mobile-web-app-title" content="HydroGlass">
     <meta name="theme-color" content="#2196F3">
     <meta name="description" content="Track your daily water intake with HydroGlass">
-    
-    <!-- Icons for various devices -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
     
     <style>
         * {
@@ -462,36 +457,13 @@
             cursor: not-allowed;
             transform: none;
         }
-        
-        .install-btn {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #2196F3;
-            color: white;
-            border: none;
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            font-size: 1.2em;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 1000;
-            transition: transform 0.2s;
-            display: none;
-        }
-        
-        .install-btn:active {
-            transform: scale(0.95);
-        }
     </style>
 </head>
 <body>
     <div class="panel-overlay" id="panelOverlay" onclick="closeAllPanels()"></div>
     
     <button class="history-btn" onclick="toggleHistory()">📊</button>
-    <button class="settings-btn" onclick="toggleSettings()">⚙</button>
-    <button class="install-btn" id="installButton" title="Install HydroGlass">📲</button>
+    <button class="settings-btn" onclick="toggleSettings()">⚙️</button>
     
     <div class="settings-panel" id="settingsPanel">
         <h3>Settings</h3>
@@ -551,45 +523,6 @@
     </div>
 
     <script>
-        // PWA Installation
-        let deferredPrompt;
-        const installButton = document.getElementById('installButton');
-        
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent the mini-infobar from appearing on mobile
-            e.preventDefault();
-            // Stash the event so it can be triggered later
-            deferredPrompt = e;
-            // Show the install button
-            installButton.style.display = 'block';
-        });
-        
-        installButton.addEventListener('click', async () => {
-            if (!deferredPrompt) return;
-            
-            // Show the install prompt
-            deferredPrompt.prompt();
-            
-            // Wait for the user to respond to the prompt
-            const { outcome } = await deferredPrompt.userChoice;
-            
-            if (outcome === 'accepted') {
-                console.log('User accepted the install prompt');
-                installButton.style.display = 'none';
-            }
-            
-            // Clear the saved prompt since it can't be used again
-            deferredPrompt = null;
-        });
-        
-        window.addEventListener('appinstalled', () => {
-            // Hide the install button
-            installButton.style.display = 'none';
-            // Clear the deferredPrompt variable
-            deferredPrompt = null;
-            console.log('PWA was installed');
-        });
-
         class WaterTracker {
             constructor() {
                 this.target = parseFloat(localStorage.getItem('waterTarget')) || 2.0;
@@ -715,7 +648,7 @@
                     this.updateUndoButton();
                     
                     // Show undo confirmation
-                    this.showNotification(Undo successful! Removed ${lastAction.amount}L);
+                    this.showNotification("Undo successful! Removed " + lastAction.amount + "L");
                 }
             }
 
@@ -725,7 +658,7 @@
                 document.getElementById('mainUndoBtn').disabled = !hasActions;
                 
                 // Update button text with action count
-                const actionText = hasActions ? ` (${this.actionHistory.length})` : '';
+                const actionText = hasActions ? " (" + this.actionHistory.length + ")" : "";
                 document.getElementById('undoBtn').textContent = 'Undo Last Tap' + actionText;
                 document.getElementById('mainUndoBtn').textContent = 'Undo Last Tap' + actionText;
             }
@@ -832,7 +765,7 @@
             showReminder() {
                 if (Notification.permission === 'granted') {
                     new Notification('💧 Time to hydrate!', {
-                        body: You've drunk ${this.currentIntake.toFixed(1)}L of ${this.target}L today
+                        body: "You've drunk " + this.currentIntake.toFixed(1) + "L of " + this.target + "L today"
                     });
                 }
             }
@@ -945,12 +878,5 @@
             }
         });
     </script>
-	<script>
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js')
-      .then(() => console.log('Service Worker registered.'));
-}
-</script>
-
 </body>
 </html>
