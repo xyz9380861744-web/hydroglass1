@@ -1,40 +1,974 @@
-const CACHE_NAME = 'hydroglass-cache-v2';
-const URLS_TO_CACHE = [
-  './',
-  './index.html',
-  './manifest.json'
-];
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="manifest" href="manifest.json">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HydroGlass - Water Tracker</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="HydroGlass">
+    <meta name="theme-color" content="#2196F3">
+    <meta name="description" content="Track your daily water intake with HydroGlass">
+    
+    <!-- Icons for various devices -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-// Install event - cache files
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(URLS_TO_CACHE))
-      .then(() => self.skipWaiting())
-  );
-});
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            touch-action: manipulation;
+            color: #333;
+        }
 
-// Activate event - clean up old caches
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cache => {
-          if (cache !== CACHE_NAME) {
-            return caches.delete(cache);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
+        .container {
+            text-align: center;
+            width: 100%;
+            max-width: 300px;
+        }
 
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        return response || fetch(event.request);
-      })
-  );
-});
+        .date-display {
+            color: #666;
+            font-size: 1em;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+
+        .glass-container {
+            position: relative;
+            width: 120px;
+            height: 180px;
+            margin: 0 auto 40px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+        }
+
+        .glass-container:active {
+            transform: scale(0.98);
+        }
+
+        /* Classic Drinking Glass Shape like 🥛 - CORRECTED */
+        .glass {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0.9) 0%,
+                rgba(255, 255, 255, 0.95) 50%,
+                rgba(255, 255, 255, 0.9) 100%
+            );
+            border: 3px solid #e0e0e0;
+            border-top: none;
+            border-radius: 0 0 40% 40%;
+            overflow: hidden;
+        }
+
+        /* Glass Base at the BOTTOM */
+        .glass-base {
+            position: absolute;
+            bottom: -8px;
+            left: 10%;
+            right: 10%;
+            height: 16px;
+            background: #f0f0f0;
+            border: 3px solid #e0e0e0;
+            border-radius: 50%;
+            z-index: 2;
+        }
+
+        .glass-base::before {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 10%;
+            right: 10%;
+            height: 8px;
+            background: linear-gradient(90deg, #e8e8e8, #f8f8f8, #e8e8e8);
+            border-radius: 50%;
+        }
+
+        /* Water - fills from BOTTOM up */
+        .water {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, #2196F3, #42a5f5);
+            transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border-radius: 0 0 35% 35%;
+            z-index: 1;
+            height: 0%;
+        }
+
+        .water.goal-reached {
+            background: linear-gradient(to top, #4CAF50, #66bb6a);
+        }
+
+        .water-surface {
+            position: absolute;
+            top: 0;
+            left: 5%;
+            right: 5%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+        }
+
+        /* Glass Rim at the TOP */
+        .glass-rim {
+            position: absolute;
+            top: -2px;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: linear-gradient(
+                90deg,
+                #e0e0e0 0%,
+                #ffffff 30%,
+                #ffffff 70%,
+                #e0e0e0 100%
+            );
+            border-radius: 50%;
+            z-index: 3;
+        }
+
+        /* Glass Shine/Reflection */
+        .glass-shine {
+            position: absolute;
+            top: 15%;
+            left: 15%;
+            width: 25%;
+            height: 20%;
+            background: linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.8) 0%,
+                rgba(255, 255, 255, 0.3) 50%,
+                rgba(255, 255, 255, 0.1) 100%
+            );
+            border-radius: 50%;
+            transform: rotate(-15deg);
+            z-index: 2;
+        }
+
+        /* Water Bubbles */
+        .water-bubble {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            animation: float 3s infinite ease-in-out;
+        }
+
+        .bubble-1 {
+            width: 4px;
+            height: 4px;
+            bottom: 20%;
+            left: 25%;
+            animation-delay: 0s;
+        }
+
+        .bubble-2 {
+            width: 3px;
+            height: 3px;
+            bottom: 30%;
+            right: 30%;
+            animation-delay: 1s;
+        }
+
+        .bubble-3 {
+            width: 5px;
+            height: 5px;
+            bottom: 40%;
+            left: 40%;
+            animation-delay: 2s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50% { transform: translateY(-10px) scale(1.1); }
+        }
+
+        .stats {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 20px;
+            margin-bottom: 25px;
+            border: 2px solid #e9ecef;
+        }
+
+        .progress-text {
+            font-size: 2.2em;
+            font-weight: bold;
+            color: #212529;
+            margin-bottom: 5px;
+        }
+
+        .target-text {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 15px;
+        }
+
+        .percentage {
+            font-size: 1.4em;
+            color: #495057;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .daily-stats {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 25px 0;
+            border: 2px solid #e9ecef;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            color: #495057;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            font-size: 1.3em;
+            color: #212529;
+        }
+
+        .instructions {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 20px;
+            margin-bottom: 15px;
+        }
+
+        .completion-message {
+            color: #28a745;
+            font-size: 1.1em;
+            margin-top: 15px;
+            opacity: 0;
+            transition: opacity 0.5s;
+            font-weight: 600;
+        }
+
+        .settings-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #495057;
+            color: white;
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            font-size: 1.2em;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            transition: transform 0.2s;
+        }
+
+        .settings-btn:active {
+            transform: scale(0.95);
+        }
+
+        .history-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: #495057;
+            color: white;
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            font-size: 1.2em;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            transition: transform 0.2s;
+        }
+
+        .history-btn:active {
+            transform: scale(0.95);
+        }
+
+        .settings-panel, .history-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            display: none;
+            z-index: 1001;
+            width: calc(100% - 40px);
+            max-width: 320px;
+            border: 2px solid #e9ecef;
+        }
+
+        .history-panel {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .settings-panel h3, .history-panel h3 {
+            margin-bottom: 20px;
+            color: #212529;
+            text-align: center;
+            font-size: 1.4em;
+        }
+
+        .settings-panel input {
+            width: 100%;
+            padding: 14px;
+            margin: 12px 0;
+            border: 2px solid #dee2e6;
+            border-radius: 12px;
+            font-size: 16px;
+            background: #f8f9fa;
+        }
+
+        .settings-panel input:focus {
+            border-color: #2196F3;
+            outline: none;
+            background: white;
+        }
+
+        .settings-panel button, .history-panel button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .settings-panel button:active, .history-panel button:active {
+            transform: scale(0.98);
+        }
+
+        .history-item {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-date {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9em;
+        }
+
+        .history-amount {
+            color: #2196F3;
+            font-weight: bold;
+        }
+
+        .goal-met {
+            background-color: #d4edda;
+            border-radius: 8px;
+            margin: 5px 0;
+        }
+
+        .goal-met .history-amount {
+            color: #28a745;
+        }
+
+        .panel-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            z-index: 999;
+        }
+
+        .undo-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            margin-top: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            opacity: 0.8;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .undo-btn:active {
+            transform: scale(0.95);
+            opacity: 1;
+        }
+
+        .undo-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .install-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            font-size: 1.2em;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            transition: transform 0.2s;
+            display: none;
+        }
+        
+        .install-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div class="panel-overlay" id="panelOverlay" onclick="closeAllPanels()"></div>
+    
+    <button class="history-btn" onclick="toggleHistory()">📊</button>
+    <button class="settings-btn" onclick="toggleSettings()">⚙</button>
+    <button class="install-btn" id="installButton" title="Install HydroGlass">📲</button>
+    
+    <div class="settings-panel" id="settingsPanel">
+        <h3>Settings</h3>
+        <input type="number" id="targetInput" placeholder="Daily target (L)" step="0.1" min="0.5" max="5">
+        <input type="number" id="tapAmount" placeholder="Amount per tap (L)" step="0.1" min="0.1" max="1">
+        <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+        <button class="btn-danger" onclick="undoLastAction()" id="undoBtn">Undo Last Tap</button>
+        <button class="btn-secondary" onclick="closeAllPanels()">Close</button>
+    </div>
+
+    <div class="history-panel" id="historyPanel">
+        <h3>Drinking History</h3>
+        <div id="historyList"></div>
+        <button class="btn-secondary" onclick="closeAllPanels()">Close History</button>
+    </div>
+
+    <div class="container">
+        <div class="date-display" id="dateDisplay"></div>
+        
+        <div class="stats">
+            <div class="progress-text" id="progressText">0.0L</div>
+            <div class="target-text">of <span id="targetText">2.0L</span> daily target</div>
+            <div class="percentage" id="percentage">0%</div>
+        </div>
+
+        <div class="glass-container" onclick="addWater()">
+            <div class="glass">
+                <div class="glass-rim"></div>
+                <div class="glass-shine"></div>
+                <div class="water" id="water">
+                    <div class="water-surface"></div>
+                    <div class="water-bubble bubble-1"></div>
+                    <div class="water-bubble bubble-2"></div>
+                    <div class="water-bubble bubble-3"></div>
+                </div>
+                <div class="glass-base"></div>
+            </div>
+        </div>
+
+        <div class="daily-stats">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">Glasses</div>
+                    <div class="stat-value" id="glassCount">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Remaining</div>
+                    <div class="stat-value" id="remainingText">2.0L</div>
+                </div>
+            </div>
+        </div>
+
+        <button class="undo-btn" onclick="undoLastAction()" id="mainUndoBtn">Undo Last Tap</button>
+
+        <div class="instructions">Tap the glass to add water</div>
+        <div class="completion-message" id="completionMessage">🎉 Daily goal achieved!</div>
+    </div>
+
+    <script>
+        // PWA Installation
+        let deferredPrompt;
+        const installButton = document.getElementById('installButton');
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later
+            deferredPrompt = e;
+            // Show the install button
+            installButton.style.display = 'block';
+        });
+        
+        installButton.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            
+            // Show the install prompt
+            deferredPrompt.prompt();
+            
+            // Wait for the user to respond to the prompt
+            const { outcome } = await deferredPrompt.userChoice;
+            
+            if (outcome === 'accepted') {
+                console.log('User accepted the install prompt');
+                installButton.style.display = 'none';
+            }
+            
+            // Clear the saved prompt since it can't be used again
+            deferredPrompt = null;
+        });
+        
+        window.addEventListener('appinstalled', () => {
+            // Hide the install button
+            installButton.style.display = 'none';
+            // Clear the deferredPrompt variable
+            deferredPrompt = null;
+            console.log('PWA was installed');
+        });
+
+        class WaterTracker {
+            constructor() {
+                this.target = parseFloat(localStorage.getItem('waterTarget')) || 2.0;
+                this.tapAmount = parseFloat(localStorage.getItem('tapAmount')) || 0.25;
+                this.currentDate = this.getCurrentDate();
+                this.currentIntake = this.getTodayIntake();
+                this.dailyHistory = this.loadHistory();
+                this.actionHistory = this.loadActionHistory();
+                
+                this.init();
+            }
+
+            init() {
+                this.checkDateChange();
+                this.updateDisplay();
+                this.setupAutoReset();
+                this.setupReminders();
+                this.updateUndoButton();
+                
+                // Load settings
+                document.getElementById('targetInput').value = this.target;
+                document.getElementById('tapAmount').value = this.tapAmount;
+                document.getElementById('targetText').textContent = this.target + 'L';
+                document.getElementById('dateDisplay').textContent = this.formatDate(new Date());
+            }
+
+            getCurrentDate() {
+                return new Date().toDateString();
+            }
+
+            getTodayIntake() {
+                const today = this.getCurrentDate();
+                const data = JSON.parse(localStorage.getItem('waterData') || '{}');
+                return data[today] || 0;
+            }
+
+            loadHistory() {
+                return JSON.parse(localStorage.getItem('waterHistory') || '{}');
+            }
+
+            loadActionHistory() {
+                const today = this.getCurrentDate();
+                const actionHistory = JSON.parse(localStorage.getItem('waterActionHistory') || '{}');
+                return actionHistory[today] || [];
+            }
+
+            saveActionHistory() {
+                const today = this.getCurrentDate();
+                const actionHistory = JSON.parse(localStorage.getItem('waterActionHistory') || '{}');
+                actionHistory[today] = this.actionHistory;
+                localStorage.setItem('waterActionHistory', JSON.stringify(actionHistory));
+            }
+
+            saveData() {
+                const today = this.getCurrentDate();
+                
+                // Save today's intake
+                const data = JSON.parse(localStorage.getItem('waterData') || '{}');
+                data[today] = this.currentIntake;
+                localStorage.setItem('waterData', JSON.stringify(data));
+                
+                // Update history
+                this.dailyHistory[today] = {
+                    intake: this.currentIntake,
+                    target: this.target,
+                    date: today,
+                    completed: this.currentIntake >= this.target
+                };
+                localStorage.setItem('waterHistory', JSON.stringify(this.dailyHistory));
+            }
+
+            checkDateChange() {
+                const today = this.getCurrentDate();
+                if (today !== this.currentDate) {
+                    // New day - reset intake but keep history
+                    this.currentDate = today;
+                    this.currentIntake = 0;
+                    this.actionHistory = [];
+                    this.saveData();
+                    this.saveActionHistory();
+                }
+            }
+
+            addWater() {
+                this.checkDateChange();
+                
+                // Save current state to action history before adding water
+                this.actionHistory.push({
+                    previousIntake: this.currentIntake,
+                    timestamp: new Date().toISOString(),
+                    amount: this.tapAmount
+                });
+                
+                // Keep only last 10 actions
+                if (this.actionHistory.length > 10) {
+                    this.actionHistory = this.actionHistory.slice(-10);
+                }
+                
+                // Add water with splash effect
+                this.currentIntake += this.tapAmount;
+                this.currentIntake = Math.min(this.currentIntake, this.target);
+                
+                this.saveData();
+                this.saveActionHistory();
+                this.updateDisplay();
+                this.updateUndoButton();
+                this.animateSplash();
+                
+                // Haptic feedback (if available)
+                if (navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+            }
+
+            undoLastAction() {
+                if (this.actionHistory.length > 0) {
+                    const lastAction = this.actionHistory.pop();
+                    this.currentIntake = lastAction.previousIntake;
+                    
+                    this.saveData();
+                    this.saveActionHistory();
+                    this.updateDisplay();
+                    this.updateUndoButton();
+                    
+                    // Show undo confirmation
+                    this.showNotification('Undo successful! Removed ' + lastAction.amount + 'L');
+                }
+            }
+
+            updateUndoButton() {
+                const hasActions = this.actionHistory.length > 0;
+                document.getElementById('undoBtn').disabled = !hasActions;
+                document.getElementById('mainUndoBtn').disabled = !hasActions;
+                
+                // Update button text with action count
+                const actionText = hasActions ? ' (' + this.actionHistory.length + ')' : '';
+                document.getElementById('undoBtn').textContent = 'Undo Last Tap' + actionText;
+                document.getElementById('mainUndoBtn').textContent = 'Undo Last Tap' + actionText;
+            }
+
+            animateSplash() {
+                const water = document.getElementById('water');
+                water.style.transform = 'scale(1.02)';
+                setTimeout(() => {
+                    water.style.transform = 'scale(1)';
+                }, 200);
+            }
+
+            updateDisplay() {
+                const percentage = Math.min((this.currentIntake / this.target) * 100, 100);
+                const water = document.getElementById('water');
+                
+                // Update water level (fills from bottom up correctly)
+                const waterHeight = percentage;
+                water.style.height = waterHeight + '%';
+                
+                // Update water color based on progress
+                if (percentage >= 100) {
+                    water.classList.add('goal-reached');
+                } else {
+                    water.classList.remove('goal-reached');
+                }
+                
+                // Update text
+                document.getElementById('progressText').textContent = this.currentIntake.toFixed(1) + 'L';
+                document.getElementById('percentage').textContent = Math.round(percentage) + '%';
+                document.getElementById('remainingText').textContent = (this.target - this.currentIntake).toFixed(1) + 'L';
+                document.getElementById('glassCount').textContent = Math.floor(this.currentIntake / this.tapAmount);
+                
+                // Update completion message
+                const message = document.getElementById('completionMessage');
+                if (percentage >= 100) {
+                    message.style.opacity = '1';
+                } else {
+                    message.style.opacity = '0';
+                }
+            }
+
+            setupAutoReset() {
+                // Check for date change every minute
+                setInterval(() => {
+                    this.checkDateChange();
+                    this.updateDisplay();
+                    this.updateUndoButton();
+                }, 60000);
+                
+                // Also set a midnight reset
+                this.setMidnightReset();
+            }
+
+            setMidnightReset() {
+                const now = new Date();
+                const midnight = new Date();
+                midnight.setHours(24, 0, 0, 0);
+                const timeToMidnight = midnight - now;
+                
+                setTimeout(() => {
+                    this.checkDateChange();
+                    this.updateDisplay();
+                    this.updateUndoButton();
+                    // Set next midnight reset
+                    this.setMidnightReset();
+                }, timeToMidnight);
+            }
+
+            saveSettings() {
+                const newTarget = parseFloat(document.getElementById('targetInput').value);
+                const newTapAmount = parseFloat(document.getElementById('tapAmount').value);
+                
+                if (newTarget && newTarget >= 0.5 && newTarget <= 5) {
+                    this.target = newTarget;
+                    localStorage.setItem('waterTarget', this.target);
+                }
+                
+                if (newTapAmount && newTapAmount >= 0.1 && newTapAmount <= 1) {
+                    this.tapAmount = newTapAmount;
+                    localStorage.setItem('tapAmount', this.tapAmount);
+                }
+                
+                document.getElementById('targetText').textContent = this.target + 'L';
+                this.updateDisplay();
+                closeAllPanels();
+            }
+
+            getHistory() {
+                const history = this.dailyHistory;
+                const sortedDates = Object.keys(history).sort((a, b) => new Date(b) - new Date(a));
+                
+                return sortedDates.slice(0, 30).map(date => history[date]);
+            }
+
+            setupReminders() {
+                setInterval(() => {
+                    if (this.currentIntake < this.target) {
+                        this.showReminder();
+                    }
+                }, 2 * 60 * 60 * 1000);
+            }
+
+            showReminder() {
+                if (Notification.permission === 'granted') {
+                    new Notification('💧 Time to hydrate!', {
+                        body: 'You\'ve drunk ' + this.currentIntake.toFixed(1) + 'L of ' + this.target + 'L today'
+                    });
+                }
+            }
+
+            showNotification(message) {
+                // Simple notification using alert (for demo)
+                alert(message);
+            }
+
+            formatDate(date) {
+                return date.toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+            }
+        }
+
+        const tracker = new WaterTracker();
+
+        // Global functions for button clicks
+        function addWater() {
+            tracker.addWater();
+        }
+
+        function undoLastAction() {
+            tracker.undoLastAction();
+        }
+
+        function toggleSettings() {
+            const settingsPanel = document.getElementById('settingsPanel');
+            const historyPanel = document.getElementById('historyPanel');
+            const overlay = document.getElementById('panelOverlay');
+            
+            if (settingsPanel.style.display === 'block') {
+                closeAllPanels();
+            } else {
+                settingsPanel.style.display = 'block';
+                historyPanel.style.display = 'none';
+                overlay.style.display = 'block';
+            }
+        }
+
+        function toggleHistory() {
+            const settingsPanel = document.getElementById('settingsPanel');
+            const historyPanel = document.getElementById('historyPanel');
+            const overlay = document.getElementById('panelOverlay');
+            
+            if (historyPanel.style.display === 'block') {
+                closeAllPanels();
+            } else {
+                historyPanel.style.display = 'block';
+                settingsPanel.style.display = 'none';
+                overlay.style.display = 'block';
+                displayHistory();
+            }
+        }
+
+        function closeAllPanels() {
+            document.getElementById('settingsPanel').style.display = 'none';
+            document.getElementById('historyPanel').style.display = 'none';
+            document.getElementById('panelOverlay').style.display = 'none';
+        }
+
+        function displayHistory() {
+            const history = tracker.getHistory();
+            const historyList = document.getElementById('historyList');
+            
+            if (history.length === 0) {
+                historyList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No history yet. Start tracking your water intake!</p>';
+                return;
+            }
+            
+            historyList.innerHTML = history.map(day => `
+                <div class="history-item ${day.completed ? 'goal-met' : ''}">
+                    <div class="history-date">${new Date(day.date).toLocaleDateString()}</div>
+                    <div class="history-amount">${day.intake.toFixed(1)}L / ${day.target}L</div>
+                </div>
+            `).join('');
+        }
+
+        function saveSettings() {
+            tracker.saveSettings();
+        }
+
+        // Request notification permission
+        document.addEventListener('click', function() {
+            if (Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        });
+
+        // Close panels when clicking overlay
+        document.getElementById('panelOverlay').addEventListener('click', closeAllPanels);
+
+        // Prevent panel closing when clicking inside panels
+        document.getElementById('settingsPanel').addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+
+        document.getElementById('historyPanel').addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+
+        // Close panels with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeAllPanels();
+            }
+        });
+    </script>
+
+    <script>
+        // Clear any existing service workers first
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
+
+        // Register new service worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(function(registration) {
+                        console.log('Service Worker registered with scope:', registration.scope);
+                    })
+                    .catch(function(error) {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
+
+</body>
+</html>
